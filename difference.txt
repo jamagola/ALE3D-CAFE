@@ -1,0 +1,146 @@
+[1mdiff --git a/NPS/data/__init__.py b/NPS/data/__init__.py[m
+[1mindex 69949a0..976d7c5 100644[m
+[1m--- a/NPS/data/__init__.py[m
+[1m+++ b/NPS/data/__init__.py[m
+[36m@@ -46,5 +46,5 @@[m [mclass Data:[m
+                 raise ValueError(f'Unknown dataloader {args.dataloader}')[m
+             if self.train is not None:[m
+                 self.train = loader(self.train, batch_size=args.batch, shuffle=True)[m
+[31m-            self.test = loader(self.test, batch_size=args.batch_test, shuffle=False, drop_last=False)[m
+[32m+[m[32m            self.test = loader(self.test, batch_size=args.batch_test, shuffle=False, drop_last=False) # Read orderly if shuffle false[m
+ [m
+[1mdiff --git a/NPS/model/ConvRNN/__init__.py b/NPS/model/ConvRNN/__init__.py[m
+[1mindex eeea5f2..0589466 100644[m
+[1m--- a/NPS/model/ConvRNN/__init__.py[m
+[1m+++ b/NPS/model/ConvRNN/__init__.py[m
+[36m@@ -1,5 +1,7 @@[m
+[32m+[m
+ __author__ = 'yunbo'[m
+ [m
+[32m+[m[32mimport numpy as np[m
+ import torch[m
+ import torch.nn as nn[m
+ from model.common import CNN[m
+[36m@@ -25,6 +27,11 @@[m [mdef make_model(args):[m
+         from .predrnn_v1 import predrnn_v1[m
+         rnn = predrnn_v1(args.n_mpassing, args.nfeat_hid, args.nfeat_in, args.nfeat_out, args.dim, args.periodic, args)[m
+         nf_lat_in = args.nfeat_in[m
+[32m+[m[41m     [m
+[32m+[m[32m        if args.mode=='valid':[m
+[32m+[m[32m            val=1[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            val=0[m
+     elif args.lat_model == 'predrnn_v2':[m
+         raise NotImplementedError()[m
+         from .predrnn_v2 import predrnn_v2[m
+[36m@@ -33,10 +40,10 @@[m [mdef make_model(args):[m
+         raise NotImplementedError()[m
+         from .convlstm import convlstm[m
+         rnn = convlstm(args.n_mpassing, args.nfeat_hid, args.nfeat_in, args.nfeat_out, args)[m
+[31m-    return ConvRNN(rnn, args.autoencoder, args.nfeat_in, nf_lat_in, args.nfeat_hid[-1], args.nfeat_out, args.dim, args.periodic, args.dx, args.encdec_unet, args)[m
+[32m+[m[32m    return ConvRNN(rnn, args.autoencoder, args.nfeat_in, nf_lat_in, val, args.nfeat_hid[-1], args.nfeat_out, args.dim, args.periodic, args.dx, args.encdec_unet, args)[m
+ [m
+ class ConvRNN(nn.Module):[m
+[31m-    def __init__(self, rnn, autoencoder, nfeat_in, nfeat_in_rnn, nfeat_out_rnn, nfeat_out, dim=2, periodic=False, dx=0, unet=0, args=None):[m
+[32m+[m[32m    def __init__(self, rnn, autoencoder, nfeat_in, nfeat_in_rnn, val, nfeat_out_rnn, nfeat_out, dim=2, periodic=False, dx=0, unet=0, args=None):[m
+         super().__init__()[m
+         self.rnn = rnn[m
+         self.args = args[m
+[36m@@ -47,7 +54,64 @@[m [mclass ConvRNN(nn.Module):[m
+         self.periodic = periodic[m
+         self.dx = dx[m
+         self.encdec_unet = CNN(nfeat_in_rnn+nfeat_out_rnn, [], nfeat_out_rnn, 1, activation=args.act, dim=dim, periodic=periodic, last_bias=False) if unet else None[m
+[32m+[m[32m        self.val=val[m
+[32m+[m[41m    [m
+[32m+[m[32m    # Hard coded rules[m
+[32m+[m[32m    def predict_next(self, x0,x1):[m
+[32m+[m	[32m#both x1 and x2 are of the shape [batch,channel,Nx,Ny,Nz] -- Channel first option[m
+[32m+[m	[32m#Final output: cell state, euler, size[m
+[32m+[m	[32m# 0=inactive, 1=liquid, 2=mushy, 3=solid[m
+[32m+[m	[32m# channel last : [batch,Nx,Ny,Nz,channel][m
+[32m+[m[32m        temp=x1[m
+[32m+[m[32m        x0=x0.permute((0,2,3,4,1))[m
+[32m+[m[32m        x1=x1.permute((0,2,3,4,1))[m
+[32m+[m[32m        # print('Inside:x0 ',x0.shape)[m
+[32m+[m[32m        #print('Inside:x1 ',x1.shape)[m
+[32m+[m[41m        [m
+[32m+[m[32m        state0=torch.round(x0[...,:1]).clamp(0,3).type(torch.long)[m
+[32m+[m[32m        #print('state0: ', state0.shape)[m
+[32m+[m[41m        [m
+[32m+[m[32m        flag_inactive=state0==0[m
+[32m+[m[32m        #print('flag: ', flag_inactive.shape)[m
+[32m+[m	[32m# change cell id of x1[m
+[32m+[m[32m        state1=torch.round(x1[...,:1]).clamp(0,3).type(torch.long)[m
+[32m+[m[32m        ##state1=x1[...,:1][m
+[32m+[m[32m        state1[flag_inactive]=0 #stay inactive[m
+[32m+[m[32m        #print('state1 val: ',state1)[m[41m [m
+[32m+[m[32m        #print('flag value: ',flag_inactive)[m
+[32m+[m	[32m# change "size" of x1[m
+[32m+[m	[32m# field1 is "size"[m
+[32m+[m[32m        field1=x1[...,-1:] #last output feature is size[m
+[32m+[m	[32m# hard code: 0 must not be changed[m
+[32m+[m[32m        field1[flag_inactive]=-1[m
+[32m+[m[32m        field1[state1==1]=-1[m
+[32m+[m[32m        field1[state1==3]=1[m
+[32m+[m[32m        field1[state1==2]=field1[state1==2].clamp(0,1)[m
+[32m+[m[32m        #print('field1: ', field1.shape)[m
+[32m+[m
+[32m+[m	[32m# Change euler angle:[m
+[32m+[m[32m        #print('state1 mask: ', state1[:,:,:,:,0].shape)[m
+[32m+[m[32m        euler1=x1[...,1:10].clamp(-1,1) # rot matrix is on[m
+[32m+[m[32m        euler1[state1[:,:,:,:,0]<=1][:,:]=-1[m
+[32m+[m[32m        #print('euler1: ',euler1.shape)[m
+[32m+[m[32m        #print('state1: ', state1.shape)[m
+[32m+[m[32m        flag_no_change_in_euler=torch.logical_and(state0[:,:,:,:,0]>=2,state1[:,:,:,:,0]>=2)[m
+[32m+[m[32m        #print('flag_no_chg: ', flag_no_change_in_euler.shape)[m
+[32m+[m[32m        #print('x0 inside: ', x0.shape)[m
+[32m+[m[32m        #print('error: ',x0[flag_no_change_in_euler][:,1:10].shape)[m
+[32m+[m[32m        euler1[flag_no_change_in_euler][:,:]=x0[flag_no_change_in_euler][:,1:10].clamp(-1,1)[m
+[32m+[m[32m        #print('euler1 after flag: ',euler1.shape)[m
+[32m+[m	[32m# # flag_solidify = torch.logical_and(state0<=1, state1>=2)[m
+[32m+[m[32m        # # for mushy or solid cells, inherit Euler angles unless it was liquid phase at t=0[m
+ [m
+[32m+[m[32m        updated_x1=torch.cat([state1,euler1,field1], dim=-1)[m
+[32m+[m[32m        updated_x1=updated_x1.permute((0,4,1,2,3))[m
+[32m+[m[32m        ##print('returning: ',updated_x1.shape)[m
+[32m+[m[32m        ##print('x1 ',temp.shape )[m
+[32m+[m[32m        ##print('debug: ',state1.shape)[m
+[32m+[m[32m        ##error()[m
+[32m+[m[32m        return updated_x1[m
+[32m+[m[41m        [m
+     def forward(self, x, reset=False, **kwx):[m
+         x1 = self.autoencoder(x)[m
+         x2 = self.rnn(x1, reset=reset, **kwx)[m
+[36m@@ -57,5 +121,15 @@[m [mclass ConvRNN(nn.Module):[m
+         x2 = self.autoencoder(x2, False)[m
+         if self.dx:[m
+             x2 += x[:, :self.nfeat_out][m
+[31m-        return x2[m
+ [m
+[32m+[m[32m        x0=x[:, :self.nfeat_out] #x1 has 13 features, x2 has 11[m
+[32m+[m
+[32m+[m[32m        #print('pre debug: ', x2.shape)[m
+[32m+[m[32m        #print('Pre debug x0 ',x0.shape)[m
+[32m+[m[32m        #print('pre debug x ',x.shape)[m
+[32m+[m[32m        ###########Attention!!##########################[m
+[32m+[m[32m        ##if self.val:[m[41m [m
+[32m+[m[32m            ##x2=self.predict_next(x0,x2) #predNext Here![m
+[32m+[m[32m        x2=self.predict_next(x0,x2) #predNext Here![m
+[32m+[m[32m        #print('debug: ', x2.shape)[m
+[32m+[m[32m        return x2[m
+[1mdiff --git a/scripts/animate-3d.py b/scripts/animate-3d.py[m
+[1mindex bcb9891..93cf7c4 100755[m
+[1m--- a/scripts/animate-3d.py[m
+[1m+++ b/scripts/animate-3d.py[m
+[36m@@ -67,6 +67,8 @@[m [mdat_minmax=np.array(dat_minmax)[m
+ if options.range:[m
+     allmin = float(options.range.split(',')[0])[m
+     allmax = float(options.range.split(',')[1])[m
+[32m+[m[32m    if allmin==allmax:[m
+[32m+[m[32m        allmin=-1*allmin[m
+ else:[m
+     allmin=np.min(dat_minmax[:,0])[m
+     allmax=np.max(dat_minmax[:,1])[m
+[1mdiff --git a/scripts/preprocess_cafe.py b/scripts/preprocess_cafe.py[m
+[1mold mode 100644[m
+[1mnew mode 100755[m

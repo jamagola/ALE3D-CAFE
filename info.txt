@@ -1,0 +1,25 @@
+Following is description of methods and files used for CAFE-RNN study:
+########################################################################################################
+
+difference.txt -- generated from git diff --color > difference.txt contains changes in NPS module for CAFE RNN.
+
+cafe_rnn_test.sh -- is a base job script that is used to configure hyper-parameters and mode of the job. 
+
+jobs_cafe_batch_test.sh -- The jobs often take 36 hours to complete (about 100 epoch with epoch size about 
+                           1500 on full dataset). Hence, a separate jobscript is used to call the 
+                           "cafe_rnn_test.sh" in chain.
+
+testProcess.sh -- Pre-process the simulation data with or without temperature difference feature (dT=0/1)
+
+########################################################################################################
+Review all the options in the job script including directory to save any log, path of source data, data 
+slice dimension (currently 28x28x76). "cafe_rnn_test.sh" is often used only for inference running the script 
+in valid mode. "n_out_valid" option is used to set the size of the roll out time steps. 
+########################################################################################################
+
+confusionWork.py -- Requires pd.npy / gt.npy files from valid job with clip step of 1. This script generates 
+                    confusion matrix for given feature dependent/independent of previous state.
+
+CAFEView3D.py -- is used to visualize the single slice data based on user input.
+
+surfloss.py -- is used to rank hyperparameter from candidate network's log file.
